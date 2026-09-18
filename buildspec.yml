@@ -1,0 +1,40 @@
+version: 0.2
+
+
+phases:
+  install:
+    commands:
+      - curl -LsSf https://astral.sh/uv/install.sh | sh
+      - export PATH="$HOME/.local/bin:$PATH"
+
+
+  pre_build:
+    commands:
+      - echo Logging into ECR...
+      - aws --version
+      - ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+      - REGION=ap-south-1
+      - export REGION
+      - REPO_NAME=agentcore-commerce-bot
+
+      - aws ecr get-login-password --region $REGION | docker login --username AWS --password-stdin $ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com
+
+  build:
+    commands:
+      - echo Building ARM64 Docker image...
+      - docker build -t $REPO_NAME .
+
+      - docker tag $REPO_NAME:latest $ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com/$REPO_NAME:latest
+
+  post_build:
+    commands:
+      - echo Pushing image to ECR...
+      - docker push $ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com/$REPO_NAME:latest
+      
+      - echo Deploying to AgentCore...
+      - export PATH="$HOME/.local/bin:$PATH"
+      - uv run deploy_agent.py
+
+
+artifacts:
+  files: []
