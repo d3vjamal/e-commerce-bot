@@ -1,0 +1,371 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  CI/CD pipeline for commerce-bot: builds the ARM64 container image on pushes
+  to GitHub, pushes it to ECR, and deploys it to an Amazon Bedrock AgentCore
+  Runtime. Creates the ECR repo, a dedicated AgentCore execution role, the
+  CodeBuild/CodePipeline service roles, a Secrets Manager secret for app
+  config, and the pipeline itself. The GitHub CodeStar connection is created
+  in PENDING state and must be authorized once, manually, in the console.
+
+Parameters:
+  ProjectPrefix:
+    Type: String
+    Default: commerce-bot
+  GitHubOwner:
+    Type: String
+    Default: d3vjamal
+  GitHubRepo:
+    Type: String
+    Default: e-commerce-bot
+  GitHubBranch:
+    Type: String
+    Default: master
+  KnowledgeBaseId:
+    Type: String
+    Description: Bedrock Knowledge Base id used to scope the execution role's Retrieve permission.
+
+Resources:
+  # ─────────────────────────── ECR ───────────────────────────
+  EcrRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: agentcore-commerce-bot
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      LifecyclePolicy:
+        LifecyclePolicyText: >
+          {"rules":[{"rulePriority":1,"description":"Keep last 10 images","selection":{"tagStatus":"any","countType":"imageCountMoreThan","countNumber":10},"action":{"type":"expire"}}]}
+      RepositoryPolicyText:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AllowAgentCorePull
+            Effect: Allow
+            Principal:
+              Service: bedrock-agentcore.amazonaws.com
+            Action:
+              - ecr:BatchGetImage
+              - ecr:GetDownloadUrlForLayer
+              - ecr:BatchCheckLayerAvailability
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+
+  # ────────────────────── Artifacts / config ──────────────────────
+  ArtifactBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${ProjectPrefix}-pipeline-artifacts-${AWS::AccountId}-${AWS::Region}"
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+
+  AgentConfigSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub "${ProjectPrefix}/agent-config"
+      Description: >
+        Non-.env app config for commerce-bot's AgentCore runtime. Populated
+        out-of-band (not in this template) via `aws secretsmanager
+        put-secret-value`; deploy_agent.py reads it at deploy time and passes
+        the values as the runtime's environment variables.
+      SecretString: '{"placeholder":"populate with put-secret-value"}'
+
+  GitHubConnection:
+    Type: AWS::CodeStarConnections::Connection
+    Properties:
+      ConnectionName: !Sub "${ProjectPrefix}-github"
+      ProviderType: GitHub
+
+  # ───────────────── AgentCore runtime execution role ─────────────────
+  # Assumed by the AgentCore Runtime itself (bedrock-agentcore.amazonaws.com),
+  # not by the pipeline. Scoped to what this app actually calls: model
+  # invocation, guardrail, and its one knowledge base — no memory, identity,
+  # or code-interpreter permissions since this app doesn't use them yet.
+  AgentCoreExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ProjectPrefix}-agentcore-execution-role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AssumeRolePolicy
+            Effect: Allow
+            Principal:
+              Service: bedrock-agentcore.amazonaws.com
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+              ArnLike:
+                aws:SourceArn: !Sub "arn:aws:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:*"
+      Policies:
+        - PolicyName: AgentCoreRuntimeExecution
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: RuntimeLogsGroup
+                Effect: Allow
+                Action:
+                  - logs:DescribeLogStreams
+                  - logs:CreateLogGroup
+                Resource:
+                  - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/bedrock-agentcore/runtimes/*"
+              - Sid: RuntimeLogsDescribe
+                Effect: Allow
+                Action:
+                  - logs:DescribeLogGroups
+                Resource:
+                  - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:*"
+              - Sid: RuntimeLogsStream
+                Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource:
+                  - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/bedrock-agentcore/runtimes/*:log-stream:*"
+              - Sid: RuntimeLogDelivery
+                Effect: Allow
+                Action:
+                  - logs:PutDeliverySource
+                  - logs:PutDeliveryDestination
+                  - logs:CreateDelivery
+                  - logs:GetDeliverySource
+                  - logs:DeleteDeliverySource
+                  - logs:DeleteDeliveryDestination
+                Resource: "*"
+              - Sid: RuntimeTracing
+                Effect: Allow
+                Action:
+                  - xray:PutTraceSegments
+                  - xray:PutTelemetryRecords
+                  - xray:GetSamplingRules
+                  - xray:GetSamplingTargets
+                Resource: "*"
+              - Sid: RuntimeMetrics
+                Effect: Allow
+                Action: cloudwatch:PutMetricData
+                Resource: "*"
+                Condition:
+                  StringEquals:
+                    cloudwatch:namespace: bedrock-agentcore
+              - Sid: BedrockModelInvocation
+                Effect: Allow
+                Action:
+                  - bedrock:InvokeModel
+                  - bedrock:InvokeModelWithResponseStream
+                  - bedrock:ApplyGuardrail
+                Resource:
+                  - "arn:aws:bedrock:*::foundation-model/*"
+                  - "arn:aws:bedrock:*:*:inference-profile/*"
+                  - !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:guardrail/*"
+              - Sid: BedrockKnowledgeBaseRetrieve
+                Effect: Allow
+                Action:
+                  - bedrock:Retrieve
+                Resource:
+                  - !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:knowledge-base/${KnowledgeBaseId}"
+              - Sid: MarketplaceSubscribeOnFirstCall
+                Effect: Allow
+                Action:
+                  - aws-marketplace:ViewSubscriptions
+                  - aws-marketplace:Subscribe
+                Resource: "*"
+                Condition:
+                  StringEquals:
+                    aws:CalledViaLast: bedrock.amazonaws.com
+
+  # ───────────────────────── CodeBuild role ─────────────────────────
+  CodeBuildRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ProjectPrefix}-codebuild-role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codebuild.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: CodeBuildExecution
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: Logs
+                Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource:
+                  - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codebuild/${ProjectPrefix}-build*"
+              - Sid: Artifacts
+                Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:GetBucketLocation
+                Resource:
+                  - !GetAtt ArtifactBucket.Arn
+                  - !Sub "${ArtifactBucket.Arn}/*"
+              - Sid: EcrAuth
+                Effect: Allow
+                Action: ecr:GetAuthorizationToken
+                Resource: "*"
+              - Sid: EcrPushPull
+                Effect: Allow
+                Action:
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:PutImage
+                  - ecr:InitiateLayerUpload
+                  - ecr:UploadLayerPart
+                  - ecr:CompleteLayerUpload
+                  - ecr:BatchGetImage
+                  - ecr:GetDownloadUrlForLayer
+                Resource: !GetAtt EcrRepository.Arn
+              - Sid: ReadAgentConfigSecret
+                Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource: !Ref AgentConfigSecret
+              - Sid: DeployAgentCoreRuntime
+                Effect: Allow
+                Action:
+                  - bedrock-agentcore-control:CreateAgentRuntime
+                  - bedrock-agentcore-control:UpdateAgentRuntime
+                  - bedrock-agentcore-control:GetAgentRuntime
+                Resource: !Sub "arn:aws:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:runtime/*"
+              - Sid: ListAgentCoreRuntimes
+                Effect: Allow
+                Action: bedrock-agentcore-control:ListAgentRuntimes
+                Resource: "*"
+              - Sid: PassAgentCoreExecutionRole
+                Effect: Allow
+                Action: iam:PassRole
+                Resource: !GetAtt AgentCoreExecutionRole.Arn
+                Condition:
+                  StringEquals:
+                    iam:PassedToService: bedrock-agentcore.amazonaws.com
+              - Sid: WhoAmI
+                Effect: Allow
+                Action: sts:GetCallerIdentity
+                Resource: "*"
+
+  # ──────────────────────── CodePipeline role ────────────────────────
+  CodePipelineRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ProjectPrefix}-codepipeline-role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codepipeline.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: CodePipelineExecution
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: Artifacts
+                Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:GetBucketVersioning
+                  - s3:GetBucketLocation
+                Resource:
+                  - !GetAtt ArtifactBucket.Arn
+                  - !Sub "${ArtifactBucket.Arn}/*"
+              - Sid: UseGitHubConnection
+                Effect: Allow
+                Action: codestar-connections:UseConnection
+                Resource: !Ref GitHubConnection
+              - Sid: RunCodeBuild
+                Effect: Allow
+                Action:
+                  - codebuild:StartBuild
+                  - codebuild:BatchGetBuilds
+                Resource: !GetAtt CodeBuildProject.Arn
+
+  # ───────────────────────── CodeBuild project ─────────────────────────
+  CodeBuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: !Sub "${ProjectPrefix}-build"
+      ServiceRole: !GetAtt CodeBuildRole.Arn
+      Artifacts:
+        Type: CODEPIPELINE
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: buildspec.yml
+      Environment:
+        Type: ARM_CONTAINER
+        Image: aws/codebuild/amazonlinux2-aarch64-standard:3.0
+        ComputeType: BUILD_GENERAL1_MEDIUM
+        PrivilegedMode: true
+        EnvironmentVariables:
+          - Name: AGENTCORE_ROLE_ARN
+            Value: !GetAtt AgentCoreExecutionRole.Arn
+          - Name: AGENT_CONFIG_SECRET_ARN
+            Value: !Ref AgentConfigSecret
+
+  # ──────────────────────────── Pipeline ────────────────────────────
+  Pipeline:
+    Type: AWS::CodePipeline::Pipeline
+    Properties:
+      Name: !Sub "${ProjectPrefix}-pipeline"
+      RoleArn: !GetAtt CodePipelineRole.Arn
+      ArtifactStore:
+        Type: S3
+        Location: !Ref ArtifactBucket
+      Stages:
+        - Name: Source
+          Actions:
+            - Name: GitHubSource
+              ActionTypeId:
+                Category: Source
+                Owner: AWS
+                Provider: CodeStarSourceConnection
+                Version: "1"
+              Configuration:
+                ConnectionArn: !Ref GitHubConnection
+                FullRepositoryId: !Sub "${GitHubOwner}/${GitHubRepo}"
+                BranchName: !Ref GitHubBranch
+              OutputArtifacts:
+                - Name: SourceOutput
+        - Name: Build
+          Actions:
+            - Name: BuildAndDeploy
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Provider: CodeBuild
+                Version: "1"
+              Configuration:
+                ProjectName: !Ref CodeBuildProject
+              InputArtifacts:
+                - Name: SourceOutput
+
+Outputs:
+  EcrRepositoryUri:
+    Value: !GetAtt EcrRepository.RepositoryUri
+  AgentCoreExecutionRoleArn:
+    Value: !GetAtt AgentCoreExecutionRole.Arn
+  AgentConfigSecretArn:
+    Value: !Ref AgentConfigSecret
+  GitHubConnectionArn:
+    Value: !Ref GitHubConnection
+    Description: >-
+      Status is PENDING until manually authorized once in the console:
+      Developer Tools > Settings > Connections > this connection > Update pending connection.
+  PipelineName:
+    Value: !Ref Pipeline

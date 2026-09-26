@@ -1,3 +1,4 @@
+import json
 import os
 
 import boto3
@@ -8,12 +9,31 @@ REPO_NAME = "agentcore-commerce-bot"
 # AgentCore runtime service role in this account (must be able to call Bedrock,
 # the guardrail and the knowledge base in REGION).
 ROLE_ARN = os.environ["AGENTCORE_ROLE_ARN"]
+# Secrets Manager secret (infra/pipeline.yaml: AgentConfigSecret) holding the
+# app's non-local config (model ids, guardrail, knowledge base, backend API
+# url, ...). Optional so this script still works for a one-off manual deploy.
+AGENT_CONFIG_SECRET_ARN = os.getenv("AGENT_CONFIG_SECRET_ARN")
 
 client = boto3.client("bedrock-agentcore-control", region_name=REGION)
 
 image_uri = f"{ACCOUNT_ID}.dkr.ecr.{REGION}.amazonaws.com/{REPO_NAME}:latest"
 
 runtime_name = "agentcore_commerce_agent"
+
+
+def load_environment_variables() -> dict[str, str]:
+    """App config to inject into the AgentCore runtime, sourced from Secrets
+    Manager rather than baked into the image. Empty dict if unset (manual
+    runs / secret not yet populated)."""
+    if not AGENT_CONFIG_SECRET_ARN:
+        return {}
+    secrets_client = boto3.client("secretsmanager", region_name=REGION)
+    secret = secrets_client.get_secret_value(SecretId=AGENT_CONFIG_SECRET_ARN)
+    config = json.loads(secret["SecretString"])
+    return {k: str(v) for k, v in config.items()}
+
+
+environment_variables = load_environment_variables()
 
 
 try:
@@ -38,6 +58,7 @@ try:
             },
             networkConfiguration={"networkMode": "PUBLIC"},  # required
             roleArn=ROLE_ARN,  # required
+            environmentVariables=environment_variables,
         )
 
     else:
@@ -50,6 +71,7 @@ try:
             },
             networkConfiguration={"networkMode": "PUBLIC"},
             roleArn=ROLE_ARN,
+            environmentVariables=environment_variables,
         )
 
         runtime_id = response["agentRuntimeId"]

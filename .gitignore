@@ -10,3 +10,5 @@ __pycache__
 .env
 .env.local
 .md.DS_Store
+.build
+.build
