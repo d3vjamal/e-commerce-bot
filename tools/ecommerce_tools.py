@@ -236,6 +236,56 @@ class UserAuthTools(_EcomToolBase):
             tool_context, "PATCH", f"/users/{user_id}", payload=updates
         )
 
+    #: fields a shopper may never set on their own profile
+    PROTECTED_PROFILE_FIELDS = frozenset(
+        {
+            "_id",
+            "id",
+            "email",
+            "password",
+            "role",
+            "roles",
+            "status",
+            "isVerified",
+            "isEmailVerified",
+            "isActive",
+            "isAdmin",
+            "token",
+            "tokens",
+        }
+    )
+
+    @tool(context=True, name="ecom_update_my_profile")
+    def update_my_profile(
+        self, updates: Dict[str, Any], tool_context: ToolContext
+    ) -> Any:
+        """Update the signed-in user's own profile (name, mobile / contact
+        number, etc.). Email, password, role and verification fields cannot be
+        changed here. The user id is taken from the session.
+
+        PATCH /users/:userId (auth).
+
+        Args:
+            updates: Partial profile fields to change, e.g. {"phone": "..."}.
+        """
+        user = self._data(tool_context).get(self.AUTH_STATE_KEY, {}).get("user") or {}
+        user_id = user.get("_id") or user.get("id")
+        if not user_id:
+            return {
+                "error": "user_unknown",
+                "message": "Could not determine the signed-in user id.",
+            }
+        rejected = sorted(set(updates) & self.PROTECTED_PROFILE_FIELDS)
+        if rejected or not updates:
+            return {
+                "error": "fields_not_allowed" if rejected else "no_updates",
+                "message": "Email, password, role and verification cannot be changed here.",
+                "rejected": rejected,
+            }
+        return self._call(
+            tool_context, "PATCH", f"/users/{user_id}", payload=updates
+        )
+
     @tool(context=True, name="ecom_update_user_return_tokens")
     def update_user_return_tokens(
         self, user_id: str, updates: Dict[str, Any], tool_context: ToolContext
@@ -1837,6 +1887,6 @@ def account_tools(logger_config) -> ToolBundle:
                 "add_to_wishlist",
                 "remove_from_wishlist",
             ),
-            *_pick(ua, "get_user_details", "update_user"),
+            *_pick(ua, "get_user_details", "update_my_profile"),
         ],
     )
