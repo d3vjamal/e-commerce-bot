@@ -1,11 +1,12 @@
-"""OrderAgent — list orders, track an order, and cancel an order.
+"""OrderAgent — list, track, modify delivery details of, and cancel orders.
 
-Cancellation is transactional: the agent confirms the specific order and a
-reason with the user before calling ``ecom_cancel_order_by_customer``.
+Flow: agent → ``tools/order_tools.py`` → ``services/order_service.py`` →
+REST. Modify and cancel are transactional: the agent confirms the specific
+order (and, for cancel, a reason) with the user before calling the tool.
 """
 
 from agents.base import SpecialistAgent
-from tools.ecommerce_tools import order_tools
+from tools.order_tools import order_tools
 
 
 class OrderAgent(SpecialistAgent):

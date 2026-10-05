@@ -43,6 +43,14 @@ class Settings:
         self.knowledge_base_id = os.getenv("KNOWLEDGE_BASE_ID", "WAGW4RXPZ7")
         self.knowledge_base_top_k = int(os.getenv("KNOWLEDGE_BASE_TOP_K", "5"))
 
+        # Website policy pages read live by the SupportAgent, as
+        # "label=url,label=url" (e.g. "terms=https://shop.com/terms").
+        # Only these URLs can be fetched.
+        self.support_page_urls = os.getenv("SUPPORT_PAGE_URLS", "")
+        self.support_page_cache_ttl = int(os.getenv("SUPPORT_PAGE_CACHE_TTL", "3600"))
+        self.support_page_timeout = int(os.getenv("SUPPORT_PAGE_TIMEOUT", "10"))
+        self.support_page_max_chars = int(os.getenv("SUPPORT_PAGE_MAX_CHARS", "12000"))
+
         self.agent_core_mem_id = os.getenv("AGENTCORE_MEMORY_ID")
 
         # ── E-commerce backend (Express API exposed to the agent as tools) ─

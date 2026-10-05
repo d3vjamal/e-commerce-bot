@@ -20,9 +20,9 @@ from agents.browse_agent import BrowseAgent
 from agents.cart_agent import CartAgent
 from agents.checkout_agent import CheckoutAgent
 from agents.order_agent import OrderAgent
+from agents.support_agent import SupportAgent
 from configs.settings import settings
 from models.session_context import SessionContext
-from services.knowledge_base_service import KnowledgeBaseService
 from utils.common import CommonUtility
 from utils.logger import Logger
 
@@ -92,8 +92,7 @@ class OrchestratorAgent:
         self.order_agent = OrderAgent(logger_config)
         self.account_agent = AccountAgent(logger_config)
 
-        self._faq = self.common_util.load_faq("faq.md")
-        self.kb = KnowledgeBaseService(logger_config)
+        self.support_agent = SupportAgent(logger_config)
 
         self.agent = Agent(
             model=self.model,
@@ -376,28 +375,17 @@ class OrchestratorAgent:
 
     @tool(context=True, name="Support")
     def handle_support(self, user_input: str, tool_context: ToolContext) -> str:
-        """Answer store-policy / support questions (returns, delivery, payments,
-        terms & conditions). Returns knowledge-base passages for you to answer
-        from — do not invent policy."""
+        """Answer FAQ, store-policy and terms & conditions questions (returns,
+        delivery, payments, privacy, terms). Reads the website policy pages and
+        knowledge base. Returns a sourced answer — relay it, do not add policy."""
         _ = tool_context
-        if self.kb.enabled:
-            try:
-                passages = self.kb.retrieve(user_input)
-                self.logger.info(
-                    f"[Support] KB retrieved {len(passages)} passages | q={user_input[:80]!r}"
-                )
-                if passages:
-                    return json.dumps({"status": "OK", "passages": passages})
-                return json.dumps(
-                    {
-                        "status": "NO_MATCH",
-                        "message": "Nothing relevant found in the knowledge base.",
-                    }
-                )
-            except Exception as exc:  # noqa: BLE001
-                self.logger.exception(f"[Support] KB retrieval failed: {exc}")
-        self.logger.info(f"[Support] serving FAQ fallback | q={user_input[:80]!r}")
-        return json.dumps({"status": "OK", "faq": self._faq})
+        try:
+            response, _state = self.support_agent.run(user_input, {"data": {}})
+            text = self.support_agent.reply_text(response)
+            return json.dumps({"status": "OK", "response": text})
+        finally:
+            # one-shot Q&A: don't let stale answers leak into the next question
+            self.support_agent.reset()
 
     @tool(context=True, name="Fallback")
     def handle_fallback(self, user_input: str, tool_context: ToolContext) -> str:

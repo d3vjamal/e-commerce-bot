@@ -64,7 +64,7 @@ Identify **all** intents in the message. Pass them as a list to `IntentRouter`.
 | `CHECKOUT` | `Checkout(user_input=...)` |
 | `ORDER_TRACK` / `ORDER_CANCEL` | `ManageOrders(user_input=...)` |
 | `ACCOUNT` | `ManageAccount(user_input=...)` |
-| `SUPPORT` | `Support(user_input=...)` then answer **only** from the returned `passages` (or `faq`) text. If `status` is `NO_MATCH`, say you don't have that information and suggest contacting support |
+| `SUPPORT` | `Support(user_input=...)` and relay its `response` (it is already sourced from the website policies / knowledge base). Do not add policy details of your own. One-shot: never keep it as the active agent |
 | `UNKNOWN` | `Fallback(user_input=...)` and relay its message |
 
 ### 3.3 Mid-flow
@@ -133,4 +133,4 @@ present the confirmation and order id.
 
 **Support**
 User: "what's your return policy?"
-→ `IntentRouter(intent=["SUPPORT"])` → `Support(user_input=...)` → answer from `faq`.
+→ `IntentRouter(intent=["SUPPORT"])` → `Support(user_input=...)` → relay `response`.

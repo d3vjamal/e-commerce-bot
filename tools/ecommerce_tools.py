@@ -1814,23 +1814,6 @@ def checkout_tools(logger_config) -> ToolBundle:
     )
 
 
-def order_tools(logger_config) -> ToolBundle:
-    order = OrderTools(logger_config)
-    flow = FlowControlTools(logger_config)
-    return ToolBundle(
-        [order, flow],
-        [
-            *_pick(
-                order,
-                "get_my_orders",
-                "get_order_details",
-                "cancel_order_by_customer",
-            ),
-            *_pick(flow, "complete_task", "fail_task"),
-        ],
-    )
-
-
 def account_tools(logger_config) -> ToolBundle:
     addr = AddressTools(logger_config)
     wish = WishlistTools(logger_config)
