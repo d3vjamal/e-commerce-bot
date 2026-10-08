@@ -27,8 +27,7 @@ OrchestratorAgent  ── SOP-driven; the LLM owns routing
   ├─ IntentRouter        classify + store intent, gate on auth
   ├─ AuthAgent           adopt host JWT, or interactive sign-in
   ├─ BrowseAgent         products / categories / shops / offers   (public)
-  ├─ CartAgent           view / add / update / remove cart        (auth)
-  ├─ CheckoutAgent       address → delivery → coupon → pay → order (auth)
+  ├─ CartAgent           cart + checkout (address → pay → order)  (auth)
   ├─ OrderAgent          list / track / cancel orders             (auth)
   ├─ AccountAgent        addresses / wishlists / profile          (auth)
   └─ Support             answer from sops/faq.md
@@ -51,7 +50,7 @@ thin: run a sub-agent for one turn, persist state, enforce the auth gate.
 | `main.py` | FastAPI: `POST /invocations`, `GET /ping` |
 | `agents/orchestrator_agent.py` | intent routing, auth gate, specialist dispatch, state reset |
 | `agents/base.py` | `SpecialistAgent` base (run/reset/reply_text) |
-| `agents/{auth,browse,cart,checkout,order,account}_agent.py` | specialists |
+| `agents/{auth,browse,cart,order,account}_agent.py` | specialists |
 | `tools/ecommerce_tools.py` | ~100 `ecom_*` tools + per-agent selector bundles |
 | `services/ecommerce_service.py` | the one REST client |
 | `sops/chat/*.sop.md` | system prompts | 

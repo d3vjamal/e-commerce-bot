@@ -11,7 +11,7 @@ calls over REST.
 |---|---|---|
 | Find / compare products, categories, shops, offers | BrowseAgent | no |
 | View & modify the cart | CartAgent | yes |
-| Checkout: address → delivery → coupon → payment → place order | CheckoutAgent | yes |
+| Checkout: address → delivery → coupon → payment → place order | CartAgent | yes |
 | List / track / cancel orders | OrderAgent | yes |
 | Addresses, wishlists, profile | AccountAgent | yes |
 | Sign in / register / password reset | AuthAgent | — |

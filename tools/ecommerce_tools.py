@@ -1818,22 +1818,7 @@ def browse_tools(logger_config) -> ToolBundle:
 
 
 def cart_tools(logger_config) -> ToolBundle:
-    prod = ProductTools(logger_config)
-    return ToolBundle(
-        [prod],
-        _pick(
-            prod,
-            "get_my_cart",
-            "add_to_cart",
-            "update_cart",
-            "remove_from_cart",
-            "get_product_details",
-            "get_product_options",
-        ),
-    )
-
-
-def checkout_tools(logger_config) -> ToolBundle:
+    """Cart management plus the checkout flow (CartAgent owns both)."""
     prod = ProductTools(logger_config)
     addr = AddressTools(logger_config)
     coupon = CouponTools(logger_config)
@@ -1843,7 +1828,15 @@ def checkout_tools(logger_config) -> ToolBundle:
     return ToolBundle(
         [prod, addr, coupon, order, rzp, flow],
         [
-            *_pick(prod, "get_my_cart"),
+            *_pick(
+                prod,
+                "get_my_cart",
+                "add_to_cart",
+                "update_cart",
+                "remove_from_cart",
+                "get_product_details",
+                "get_product_options",
+            ),
             *_pick(
                 addr,
                 "get_addresses",
@@ -1868,8 +1861,9 @@ def account_tools(logger_config) -> ToolBundle:
     addr = AddressTools(logger_config)
     wish = WishlistTools(logger_config)
     ua = UserAuthTools(logger_config)
+    flow = FlowControlTools(logger_config)
     return ToolBundle(
-        [addr, wish, ua],
+        [addr, wish, ua, flow],
         [
             *_pick(
                 addr,
@@ -1888,5 +1882,6 @@ def account_tools(logger_config) -> ToolBundle:
                 "remove_from_wishlist",
             ),
             *_pick(ua, "get_user_details", "update_my_profile"),
+            *_pick(flow, "complete_task", "fail_task"),
         ],
     )

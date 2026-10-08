@@ -48,6 +48,10 @@ def find_status(body: Any) -> Optional[str]:
     return None
 
 
+#: payment methods accepted when placing an order from the OrderAgent
+PAYMENT_METHODS = frozenset({"COD", "ONLINE"})
+
+
 class OrderService:
     def __init__(self, logger_config, api: Optional[EcommerceService] = None):
         self.logger = Logger(__name__, logger_config)
@@ -70,6 +74,20 @@ class OrderService:
     def get_order(self, token: str, order_id: str) -> ApiResponse:
         """GET /order-details/:id — full detail, status and tracking."""
         return self._call("GET", f"/order-details/{order_id}", token)
+
+    def place_order(self, token: str, order: Dict[str, Any]) -> ApiResponse:
+        """POST /place-orders — checkout the signed-in user's cart."""
+        method = str(order.get("paymentMethod", "")).upper()
+        missing = [k for k in ("addressId",) if not order.get(k)]
+        if missing or method not in PAYMENT_METHODS:
+            return self.responses.fail(
+                "invalid_order",
+                message="addressId and paymentMethod (COD or ONLINE) are required.",
+                data={"missing": missing, "payment_methods": sorted(PAYMENT_METHODS)},
+            )
+        return self._call(
+            "POST", "/place-orders", token, payload={**order, "paymentMethod": method}
+        )
 
     def _ensure_changeable(self, token: str, order_id: str) -> Optional[ApiResponse]:
         """Return a failure response if the order can no longer be changed."""
@@ -100,6 +118,26 @@ class OrderService:
         if blocked:
             return blocked
         return self._call("PATCH", f"/orders/{order_id}", token, payload=updates)
+
+    def modify_item_quantity(
+        self, token: str, order_id: str, item_id: str, quantity: int
+    ) -> ApiResponse:
+        """PATCH /orders/:id — set one line item's quantity (open orders only)."""
+        if not isinstance(quantity, int) or isinstance(quantity, bool) or quantity < 1:
+            return self.responses.fail(
+                "invalid_quantity",
+                message="Quantity must be a whole number of at least 1. "
+                "To remove the order entirely, cancel it instead.",
+            )
+        blocked = self._ensure_changeable(token, order_id)
+        if blocked:
+            return blocked
+        return self._call(
+            "PATCH",
+            f"/orders/{order_id}",
+            token,
+            payload={"items": [{"itemId": item_id, "quantity": quantity}]},
+        )
 
     def cancel_order(
         self, token: str, order_id: str, reason: str

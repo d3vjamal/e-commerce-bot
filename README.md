@@ -18,8 +18,7 @@ POST /invocations (FastAPI, main.py)
 OrchestratorAgent ── SOP-driven, LLM owns routing
   ├─ AuthAgent        sign-in (or adopt the host app's JWT)
   ├─ BrowseAgent      products, categories, shops, offers   (public)
-  ├─ CartAgent        view / add / update / remove cart      (auth)
-  ├─ CheckoutAgent    address → delivery → coupon → pay      (auth)
+  ├─ CartAgent        cart + checkout (address → pay → order) (auth)
   ├─ OrderAgent       list / track / cancel orders           (auth)
   └─ AccountAgent     addresses, wishlists, profile          (auth)
         │

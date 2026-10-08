@@ -1,5 +1,6 @@
-# Use uv's ARM64 Python base image (matches pyproject requires-python >=3.13.7)
-FROM --platform=linux/arm64 ghcr.io/astral-sh/uv:python3.13-bookworm-slim
+# Use uv's Python base image (matches pyproject requires-python >=3.13.7)
+# Build for ARM64 with: docker build --platform linux/arm64 ...
+FROM ghcr.io/astral-sh/uv:python3.13-bookworm-slim
  
 WORKDIR /app
  

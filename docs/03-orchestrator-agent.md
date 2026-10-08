@@ -19,8 +19,7 @@ mechanical.
 | `IntentRouter(intent: list[str])` | sanitise + store intents, bump `turn_count`, return routing signal |
 | `Auth(user_input)` | reach `auth_state.verification_status == "PASS"` |
 | `BrowseCatalogue(user_input)` | run BrowseAgent one turn |
-| `ManageCart(user_input)` | run CartAgent one turn (auth) |
-| `Checkout(user_input)` | run CheckoutAgent one turn (auth) |
+| `ManageCart(user_input)` | run CartAgent one turn — cart and checkout (auth) |
 | `ManageOrders(user_input)` | run OrderAgent one turn (auth) |
 | `ManageAccount(user_input)` | run AccountAgent one turn (auth) |
 | `Support(user_input)` | return `sops/faq.md` text for the LLM to answer from |
@@ -63,11 +62,10 @@ sessionContext   { channel, role, userId, authToken? }   from input.details
 turn_count       int
 intent           last classified list
 pending_intents  intents still to handle (ordered)
-active_agent     "AUTH" | "BROWSE" | "CART" | "CHECKOUT" | "ORDER" | "ACCOUNT" | null
+active_agent     "AUTH" | "BROWSE" | "CART" | "ORDER" | "ACCOUNT" | null
 auth_state       { token, user, verification_status: "PASS"|"PENDING"|"FAILED", source? }
 browse_state     { flow_started, ... }
 cart_state       { flow_started, ... }
-checkout_state   { flow_started, ... }
 order_state      { flow_started, ... }
 account_state    { flow_started, ... }
 status           "COMPLETE"|"FAILED" — set by a transactional specialist, consumed then cleared

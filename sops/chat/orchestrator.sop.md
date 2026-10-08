@@ -30,7 +30,7 @@ from tool output.
 | `BROWSE` | no | Find / search / compare products, categories, shops, offers |
 | `PRODUCT_DETAIL` | no | Details, options, price, or delivery availability of a product |
 | `CART` | yes | View cart, add item, change quantity, remove item |
-| `CHECKOUT` | yes | Place an order (address, delivery, coupon, payment, confirm) |
+| `CHECKOUT` | yes | Place an order (address, delivery, coupon, payment, confirm) — handled by the same cart specialist |
 | `ORDER_TRACK` | yes | List orders, order status / tracking, order details |
 | `ORDER_CANCEL` | yes | Cancel an existing order |
 | `ACCOUNT` | yes | Delivery addresses, wishlist, profile details |
@@ -60,8 +60,7 @@ Identify **all** intents in the message. Pass them as a list to `IntentRouter`.
 | `active_agent` is set and the user is continuing that task | Call that specialist tool again immediately — **do not** re-run `IntentRouter` |
 | Intent needs sign-in and `auth_status` ≠ `"PASS"` | Call `Auth(user_input=...)`. On `PENDING`, show `next_question` and call `Auth` again next turn. On `PASS`, continue to the specialist tool in the **same** turn |
 | `BROWSE` / `PRODUCT_DETAIL` | `BrowseCatalogue(user_input=...)` |
-| `CART` | `ManageCart(user_input=...)` |
-| `CHECKOUT` | `Checkout(user_input=...)` |
+| `CART` / `CHECKOUT` | `ManageCart(user_input=...)` |
 | `ORDER_TRACK` / `ORDER_CANCEL` | `ManageOrders(user_input=...)` |
 | `ACCOUNT` | `ManageAccount(user_input=...)` |
 | `SUPPORT` | `Support(user_input=...)` and relay its `response` (it is already sourced from the website policies / knowledge base). Do not add policy details of your own. One-shot: never keep it as the active agent |
@@ -69,7 +68,7 @@ Identify **all** intents in the message. Pass them as a list to `IntentRouter`.
 
 ### 3.3 Mid-flow
 
-When `active_agent` is `CART` / `CHECKOUT` / `ORDER` / `ACCOUNT` / `BROWSE` and
+When `active_agent` is `CART` / `ORDER` / `ACCOUNT` / `BROWSE` and
 the user's message continues that task, call the matching specialist tool
 directly. Switch tasks only when the user clearly changes topic — then re-run
 `IntentRouter`.
@@ -127,7 +126,7 @@ once `Auth` returns `PASS` → `ManageCart(...)` same turn.
 
 **Checkout**
 User: "checkout"
-→ `IntentRouter(intent=["CHECKOUT"])` → (auth ok) → `Checkout(user_input="checkout")`
+→ `IntentRouter(intent=["CHECKOUT"])` → (auth ok) → `ManageCart(user_input="checkout")`
 → relay each `IN_PROGRESS` `response` (address? coupon? confirm total?) → on `COMPLETE`
 present the confirmation and order id.
 

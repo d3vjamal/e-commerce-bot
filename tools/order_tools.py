@@ -6,7 +6,14 @@ from typing import Any, Dict, Optional
 from strands import ToolContext, tool
 
 from services.order_service import CUSTOMER_EDITABLE_FIELDS, OrderService
-from tools.ecommerce_tools import FlowControlTools, ToolBundle, _EcomToolBase
+from tools.ecommerce_tools import (
+    AddressTools,
+    FlowControlTools,
+    ProductTools,
+    ToolBundle,
+    _EcomToolBase,
+    _pick,
+)
 from utils.response import ResponseBuilder
 
 _NOT_AUTH = {
@@ -47,6 +54,34 @@ class OrderAgentTools(_EcomToolBase):
         """
         return self._run(tool_context, self.orders.get_order, order_id)
 
+    @tool(context=True, name="ecom_place_order")
+    def place_order(self, order: Dict[str, Any], tool_context: ToolContext) -> Any:
+        """Place a new order from the user's cart. Call only after the user
+        confirmed address, payment method and total.
+
+        Args:
+            order: {"addressId": "...", "paymentMethod": "COD"|"ONLINE",
+                "couponCode": "...?"}.
+        """
+        return self._run(tool_context, self.orders.place_order, order)
+
+    @tool(context=True, name="ecom_modify_order_item_quantity")
+    def modify_order_item_quantity(
+        self, order_id: str, item_id: str, quantity: int, tool_context: ToolContext
+    ) -> Any:
+        """Change the quantity of one item on the user's own order. Refused if
+        the order is already shipped or closed. Quantity must be >= 1 (use
+        cancel to remove the whole order).
+
+        Args:
+            order_id: The order to modify.
+            item_id: The line item id from the order details.
+            quantity: New quantity (whole number >= 1).
+        """
+        return self._run(
+            tool_context, self.orders.modify_item_quantity, order_id, item_id, quantity
+        )
+
     @tool(context=True, name="ecom_modify_order_by_customer")
     def modify_order_by_customer(
         self, order_id: str, updates: Dict[str, Any], tool_context: ToolContext
@@ -63,28 +98,37 @@ class OrderAgentTools(_EcomToolBase):
 
     @tool(context=True, name="ecom_cancel_order_by_customer")
     def cancel_order_by_customer(
-        self, order_id: str, reason: str, tool_context: ToolContext
+        self,
+        order_id: str,
+        tool_context: ToolContext,
+        reason: str = "Cancelled by customer",
     ) -> Any:
         """Cancel the user's own order. Call only after the user confirmed.
         Refused if the order is already shipped or closed.
 
         Args:
             order_id: Target order id.
-            reason: The user's cancellation reason.
+            reason: The user's cancellation reason, if they gave one.
         """
         return self._run(tool_context, self.orders.cancel_order, order_id, reason)
 
 
 def order_tools(logger_config) -> ToolBundle:
     ot = OrderAgentTools(logger_config)
+    prod = ProductTools(logger_config)
+    addr = AddressTools(logger_config)
     flow = FlowControlTools(logger_config)
     return ToolBundle(
-        [ot, flow],
+        [ot, prod, addr, flow],
         [
             ot.get_my_orders,
             ot.get_order_details,
+            ot.place_order,
+            ot.modify_order_item_quantity,
             ot.modify_order_by_customer,
             ot.cancel_order_by_customer,
+            *_pick(prod, "get_my_cart"),
+            *_pick(addr, "get_addresses", "get_default_address"),
             flow.complete_task,
             flow.fail_task,
         ],

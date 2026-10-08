@@ -36,8 +36,7 @@ the real controllers using live responses from `scripts/chat.py`:
 |---|---|---|
 | `auth_tools` | AuthAgent | login, login_social, register_user, forgot_password, verify_email, resend_verification |
 | `browse_tools` | BrowseAgent | product/category/shop/banner/home-feed **reads** only |
-| `cart_tools` | CartAgent | get_my_cart, add/update/remove cart, product detail/options |
-| `checkout_tools` | CheckoutAgent | cart, address reads + add, delivery_charges, validate_coupon, place_order, razorpay ×3, `commerce_complete_task/_fail_task` |
+| `cart_tools` | CartAgent | cart get/add/update/remove, product detail/options, address reads + add, delivery_charges, validate_coupon, place_order, razorpay ×3, `commerce_complete_task/_fail_task` |
 | `order_tools` | OrderAgent | get_my_orders, get_order_details, cancel_order_by_customer, `commerce_*` |
 | `account_tools` | AccountAgent | address CRUD, wishlist, get_user_details, update_user |
 

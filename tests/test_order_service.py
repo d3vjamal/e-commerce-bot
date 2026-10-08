@@ -55,3 +55,29 @@ def test_modify_allowed_field_patches():
 def test_network_failure_becomes_response():
     s, _ = svc(fail=True)
     assert s.list_my_orders("t").error == "connection_error"
+
+
+def test_place_order_validates_and_posts():
+    s, api = svc()
+    assert s.place_order("t", {"paymentMethod": "COD"}).error == "invalid_order"
+    assert api.calls == []
+    assert s.place_order("t", {"addressId": "a1", "paymentMethod": "cod"}).success
+    assert api.calls[-1] == (
+        "POST", "/place-orders", {"addressId": "a1", "paymentMethod": "COD"}
+    )
+
+
+def test_modify_quantity_patches_items():
+    s, api = svc()
+    assert s.modify_item_quantity("t", "7", "i1", 3).success
+    assert api.calls[-1] == (
+        "PATCH", "/orders/7", {"items": [{"itemId": "i1", "quantity": 3}]}
+    )
+
+
+def test_modify_quantity_rejects_zero_and_locked():
+    s, api = svc()
+    assert s.modify_item_quantity("t", "7", "i1", 0).error == "invalid_quantity"
+    assert api.calls == []
+    s, api = svc(status="DELIVERED")
+    assert s.modify_item_quantity("t", "7", "i1", 2).error == "order_not_changeable"

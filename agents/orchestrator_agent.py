@@ -18,7 +18,6 @@ from agents.account_agent import AccountAgent
 from agents.auth_agent import AuthAgent
 from agents.browse_agent import BrowseAgent
 from agents.cart_agent import CartAgent
-from agents.checkout_agent import CheckoutAgent
 from agents.order_agent import OrderAgent
 from agents.support_agent import SupportAgent
 from configs.settings import settings
@@ -31,7 +30,7 @@ INTENT_SPEC = {
     "BROWSE": ("handle_browse", False),
     "PRODUCT_DETAIL": ("handle_browse", False),
     "CART": ("handle_cart", True),
-    "CHECKOUT": ("handle_checkout", True),
+    "CHECKOUT": ("handle_cart", True),
     "ORDER_TRACK": ("handle_order", True),
     "ORDER_CANCEL": ("handle_order", True),
     "ACCOUNT": ("handle_account", True),
@@ -51,7 +50,6 @@ _FLOW_KEYS = (
     "order_id",
     "browse_state",
     "cart_state",
-    "checkout_state",
     "order_state",
     "account_state",
 )
@@ -88,7 +86,6 @@ class OrchestratorAgent:
         self.auth_agent = AuthAgent(logger_config)
         self.browse_agent = BrowseAgent(logger_config)
         self.cart_agent = CartAgent(logger_config)
-        self.checkout_agent = CheckoutAgent(logger_config)
         self.order_agent = OrderAgent(logger_config)
         self.account_agent = AccountAgent(logger_config)
 
@@ -102,7 +99,6 @@ class OrchestratorAgent:
                 self.handle_auth,
                 self.handle_browse,
                 self.handle_cart,
-                self.handle_checkout,
                 self.handle_order,
                 self.handle_account,
                 self.handle_support,
@@ -325,7 +321,9 @@ class OrchestratorAgent:
 
     @tool(context=True, name="ManageCart")
     def handle_cart(self, user_input: str, tool_context: ToolContext) -> str:
-        """View or change the signed-in shopper's cart (add / update qty / remove)."""
+        """Manage the signed-in shopper's cart (view / add / update qty / remove) and
+        run checkout: address, delivery charge, coupon, payment, confirmation,
+        place order. Multi-turn; checkout ends COMPLETE with an order id."""
         return self._run_specialist(
             self.cart_agent,
             "CART",
@@ -333,20 +331,6 @@ class OrchestratorAgent:
             user_input,
             tool_context,
             needs_auth=True,
-        )
-
-    @tool(context=True, name="Checkout")
-    def handle_checkout(self, user_input: str, tool_context: ToolContext) -> str:
-        """Run the checkout flow: address, delivery charge, coupon, payment,
-        confirmation, place order. Multi-turn; ends COMPLETE with an order id."""
-        return self._run_specialist(
-            self.checkout_agent,
-            "CHECKOUT",
-            "checkout_state",
-            user_input,
-            tool_context,
-            needs_auth=True,
-            first_turn_prefix="Begin checkout. Review the cart first.",
         )
 
     @tool(context=True, name="ManageOrders")
@@ -418,7 +402,6 @@ class OrchestratorAgent:
             for agent in (
                 self.browse_agent,
                 self.cart_agent,
-                self.checkout_agent,
                 self.order_agent,
                 self.account_agent,
             ):

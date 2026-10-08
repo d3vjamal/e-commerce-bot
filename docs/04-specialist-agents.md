@@ -19,7 +19,6 @@ being handed the token directly.
 | AuthAgent | `auth_agent.py` | `chat/auth.sop.md` | `auth_tools` | — |
 | BrowseAgent | `browse_agent.py` | `chat/browse.sop.md` | `browse_tools` | no |
 | CartAgent | `cart_agent.py` | `chat/cart.sop.md` | `cart_tools` | yes |
-| CheckoutAgent | `checkout_agent.py` | `chat/checkout.sop.md` | `checkout_tools` | yes |
 | OrderAgent | `order_agent.py` | `chat/order.sop.md` | `order_tools` | yes |
 | AccountAgent | `account_agent.py` | `chat/account.sop.md` | `account_tools` | yes |
 
@@ -41,11 +40,10 @@ invents catalogue data.
 ## CartAgent
 
 Resolves the user's phrasing to a `productId` (+ `optionId`), mutates the cart,
-and reads it back after every change. Hands off to checkout on "buy now".
+and reads it back after every change. On "checkout" / "buy now" the same agent
+runs the checkout.
 
-## CheckoutAgent
-
-Strict ordered flow (see `chat/checkout.sop.md`): review cart → address →
+Checkout is a strict ordered flow (see `chat/cart.sop.md`): review cart → address →
 delivery charge → optional coupon → payment method → **explicit total
 confirmation** → `ecom_place_order` → Razorpay create/verify/capture for online
 payments → `commerce_complete_task` with the `order_id`. Never places the order
