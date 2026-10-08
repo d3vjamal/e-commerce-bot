@@ -3,10 +3,10 @@ name = "commerce-bot"
 version = "0.1.0"
 description = "Multi-agent e-commerce assistant (Strands + Bedrock + FastAPI)"
 readme = "README.md"
-requires-python = ">=3.13.7",
+requires-python = ">=3.13.7"
 authors = [
     { name = "Jamaluddin", email = "d3v.jamal@gmail.com" }
-],
+]
 dependencies = [
     "boto3>=1.43.28",
     "fastapi>=0.136.3",

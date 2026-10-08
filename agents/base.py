@@ -18,6 +18,24 @@ from utils.common import CommonUtility
 from utils.logger import Logger
 
 
+def build_specialist_model(model_id: Optional[str] = None, temperature: float = 0.0):
+    """Bedrock model for a specialist. Anthropic prompt caching is only enabled
+    for Anthropic model ids (other models, e.g. Nova, reject it)."""
+    resolved_model_id = model_id or settings.specialist_model_id
+    cache_kwargs: dict[str, Any] = {}
+    if "anthropic" in resolved_model_id:
+        cache_kwargs = {
+            "cache_tools": "default",
+            "cache_config": CacheConfig(strategy="anthropic"),
+        }
+    return BedrockModel(
+        model_id=resolved_model_id,
+        region_name=settings.region,
+        temperature=temperature,
+        **cache_kwargs,
+    )
+
+
 class SpecialistAgent:
     """Base for auth / browse / cart / checkout / order / account agents."""
 
@@ -40,20 +58,7 @@ class SpecialistAgent:
         self.common_util = CommonUtility(logger_config)
         self._bundle = tool_bundle
 
-        resolved_model_id = model_id or settings.specialist_model_id
-        cache_kwargs: dict[str, Any] = {}
-        if "anthropic" in resolved_model_id:
-            cache_kwargs = {
-                "cache_tools": "default",
-                "cache_config": CacheConfig(strategy="anthropic"),
-            }
-
-        self.model = BedrockModel(
-            model_id=resolved_model_id,
-            region_name=settings.region,
-            temperature=temperature,
-            **cache_kwargs,
-        )
+        self.model = build_specialist_model(model_id, temperature)
 
         self.conversation_manager = SummarizingConversationManager(
             summary_ratio=summary_ratio,

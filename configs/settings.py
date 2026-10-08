@@ -56,6 +56,8 @@ class Settings:
         # ── E-commerce backend (Express API exposed to the agent as tools) ─
         self.ecommerce_api_base_url = os.getenv("ECOMMERCE_API_BASE_URL")
         self.ecommerce_auth_scheme = os.getenv("ECOMMERCE_AUTH_SCHEME", "Bearer")
+        # The web app sends the raw JWT in a ``token`` header; set empty to disable.
+        self.ecommerce_token_header = os.getenv("ECOMMERCE_TOKEN_HEADER", "token")
         self.ecommerce_api_timeout = int(os.getenv("ECOMMERCE_API_TIMEOUT", "30"))
 
         self._validate()

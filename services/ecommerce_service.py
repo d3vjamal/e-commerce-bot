@@ -27,6 +27,7 @@ class EcommerceService:
         self.logger = Logger(__name__, logger_config)
         self.base_url = (settings.ecommerce_api_base_url or "").rstrip("/")
         self.auth_scheme = (settings.ecommerce_auth_scheme or "").strip()
+        self.token_header = (settings.ecommerce_token_header or "").strip()
         self.default_timeout = settings.ecommerce_api_timeout
 
     # ─────────────────────────────────────────────────────────────────────
@@ -62,6 +63,8 @@ class EcommerceService:
             headers["Authorization"] = (
                 f"{self.auth_scheme} {token}" if self.auth_scheme else token
             )
+            if self.token_header:
+                headers[self.token_header] = token
         if extra:
             headers.update(extra)
         return headers
@@ -69,8 +72,9 @@ class EcommerceService:
     @staticmethod
     def _mask(headers: Dict[str, str]) -> Dict[str, str]:
         masked = dict(headers)
-        if masked.get("Authorization"):
-            masked["Authorization"] = masked["Authorization"][:14] + "***"
+        for key in ("Authorization", "token"):
+            if masked.get(key):
+                masked[key] = masked[key][:14] + "***"
         return masked
 
     # ─────────────────────────────────────────────────────────────────────

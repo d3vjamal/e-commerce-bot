@@ -25,7 +25,8 @@ def _get_orchestrator(session_id: str | None) -> OrchestratorAgent:
     if not session_id:
         return OrchestratorAgent(logger_config, None)
     if session_id not in _orchestrators:
-        _orchestrators[session_id] = OrchestratorAgent(logger_config, session_id)
+        _orchestrators[session_id] = OrchestratorAgent(
+            logger_config, session_id)
     return _orchestrators[session_id]
 
 
@@ -87,4 +88,4 @@ async def ping():
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=8080)
+    uvicorn.run(app, host="0.0.0.0", port=8000)

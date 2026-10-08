@@ -19,7 +19,7 @@ from utils.response import ResponseBuilder
 _NOT_AUTH = {
     "success": False,
     "error": "not_authenticated",
-    "message": "The user must sign in before this action.",
+    "message": "No session token is available. Ask the user to provide a fresh token.",
 }
 
 

@@ -128,13 +128,6 @@ class OrchestratorAgent:
                         by_alias=True, exclude={"auth_token"}
                     )
                 }
-                if ctx.auth_token:
-                    data["auth_state"] = {
-                        "token": ctx.auth_token,
-                        "user": {"id": ctx.user_id} if ctx.user_id else None,
-                        "verification_status": "PASS",
-                        "source": "host_app",
-                    }
                 self.agent.state.set("data", data)
                 self.logger.info("New session — state initialised")
             else:
@@ -142,6 +135,20 @@ class OrchestratorAgent:
                     f"Existing session | turn={data.get('turn_count', 0)} "
                     f"| active_agent={data.get('active_agent')}"
                 )
+
+            # Adopt the host JWT on every turn so a refreshed token replaces an
+            # expired one mid-session.
+            auth = data.get("auth_state") or {}
+            if ctx.auth_token and auth.get("token") != ctx.auth_token:
+                data["auth_state"] = {
+                    **auth,
+                    "token": ctx.auth_token,
+                    "user": {"id": ctx.user_id} if ctx.user_id else auth.get("user"),
+                    "verification_status": "PASS",
+                    "source": "host_app",
+                }
+                self.agent.state.set("data", data)
+                self.logger.info("Host token adopted/refreshed")
 
             result = self.agent(user_input)
             data = self.agent.state.get("data") or {}

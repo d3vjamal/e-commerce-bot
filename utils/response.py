@@ -82,6 +82,14 @@ class ResponseBuilder:
         message = None
         if isinstance(body, dict):
             message = body.get("message") or body.get("error")
+        if response.status_code == 401:
+            return self.fail(
+                "token_expired",
+                message="The session token is invalid or has expired. "
+                "Ask the user to provide a fresh token.",
+                status_code=401,
+                data=body,
+            )
         return self.fail(
             f"http_{response.status_code}",
             message=str(message) if message else response.reason,

@@ -35,6 +35,7 @@ controller schemas are not modelled here — tighten the signatures once the
 exact payload shapes are known.
 """
 
+import re
 from typing import Any, Dict, List, Optional
 
 from strands import ToolContext, tool
@@ -236,6 +237,76 @@ class UserAuthTools(_EcomToolBase):
             tool_context, "PATCH", f"/users/{user_id}", payload=updates
         )
 
+    #: wrong-email attempts allowed before account changes are locked
+    MAX_EMAIL_ATTEMPTS = 3
+
+    @staticmethod
+    def _find_email(body: Any) -> Optional[str]:
+        """Pull an email address out of a user payload of unknown nesting."""
+        if not isinstance(body, dict):
+            return None
+        value = body.get("email")
+        if isinstance(value, str) and value:
+            return value
+        for key in ("data", "user", "result", "profile"):
+            found = UserAuthTools._find_email(body.get(key))
+            if found:
+                return found
+        return None
+
+    def _is_email_verified(self, tool_context: ToolContext) -> bool:
+        return bool(
+            self._data(tool_context).get(self.AUTH_STATE_KEY, {}).get("email_verified")
+        )
+
+    _EMAIL_NOT_VERIFIED = {
+        "error": "email_not_verified",
+        "message": (
+            "Ask the user for the email address linked to their account and "
+            "call ecom_verify_account_email before making this change."
+        ),
+    }
+
+    @tool(context=True, name="ecom_verify_account_email")
+    def verify_account_email(self, email: str, tool_context: ToolContext) -> Any:
+        """Check the email address the user typed against the email linked to
+        the signed-in account. Required once before profile or address changes.
+
+        Args:
+            email: The linked email address, exactly as the user typed it.
+        """
+        data = self._data(tool_context)
+        auth = data.get(self.AUTH_STATE_KEY) or {}
+        if auth.get("email_verified"):
+            return {"status": "verified"}
+        if auth.get("email_attempts", 0) >= self.MAX_EMAIL_ATTEMPTS:
+            return {
+                "error": "too_many_attempts",
+                "message": "Too many incorrect attempts. Account changes are locked for this session.",
+            }
+        user = auth.get("user") or {}
+        linked = self._find_email(user)
+        if not linked:
+            user_id = user.get("_id") or user.get("id")
+            if not user_id:
+                return {"error": "user_unknown", "message": "Could not determine the signed-in user."}
+            details = self._call(tool_context, "GET", f"/user/{user_id}")
+            linked = self._find_email(details)
+        if not linked:
+            return {"error": "email_unavailable", "message": "Could not read the linked email for this account."}
+        if (email or "").strip().lower() != linked.strip().lower():
+            auth["email_attempts"] = auth.get("email_attempts", 0) + 1
+            data[self.AUTH_STATE_KEY] = auth
+            tool_context.agent.state.set("data", data)
+            return {
+                "error": "email_mismatch",
+                "message": "That email does not match the account. Do not reveal the real email.",
+            }
+        auth["email_verified"] = True
+        data[self.AUTH_STATE_KEY] = auth
+        tool_context.agent.state.set("data", data)
+        return {"status": "verified"}
+
     #: fields a shopper may never set on their own profile
     PROTECTED_PROFILE_FIELDS = frozenset(
         {
@@ -268,6 +339,8 @@ class UserAuthTools(_EcomToolBase):
         Args:
             updates: Partial profile fields to change, e.g. {"phone": "..."}.
         """
+        if not self._is_email_verified(tool_context):
+            return self._EMAIL_NOT_VERIFIED
         user = self._data(tool_context).get(self.AUTH_STATE_KEY, {}).get("user") or {}
         user_id = user.get("_id") or user.get("id")
         if not user_id:
@@ -491,6 +564,46 @@ class ShopTools(_EcomToolBase):
 # ─────────────────────────────────────────────────────────────────────────────
 
 
+#: address fields the shopper can never change
+_ADDRESS_LOCKED = frozenset({"_id", "id", "userId", "user", "createdAt", "updatedAt"})
+
+
+_ADDRESS_REQUIRED = ("name", "phone", "pincode", "addressLine1", "city")
+_ADDRESS_TYPES = ("home", "work")
+
+
+def _validate_address(fields: Dict[str, Any], *, require_all: bool) -> Optional[Dict[str, Any]]:
+    """Check an address body; return an error dict or None. Normalises in place."""
+    problems: Dict[str, str] = {}
+    if require_all:
+        for key in _ADDRESS_REQUIRED:
+            if not str(fields.get(key) or "").strip():
+                problems[key] = "required"
+    for key in ("phone", "alternatePhone"):
+        if fields.get(key):
+            digits = re.sub(r"[\s\-+]", "", str(fields[key]))
+            digits = digits[-10:] if digits.startswith("91") and len(digits) == 12 else digits
+            if not re.fullmatch(r"[6-9]\d{9}", digits):
+                problems[key] = "must be a 10-digit mobile number"
+            else:
+                fields[key] = digits
+    if fields.get("pincode") and not re.fullmatch(r"\d{6}", str(fields["pincode"]).strip()):
+        problems["pincode"] = "must be 6 digits"
+    elif fields.get("pincode"):
+        fields["pincode"] = str(fields["pincode"]).strip()
+    if fields.get("addressType"):
+        fields["addressType"] = str(fields["addressType"]).strip().lower()
+        if fields["addressType"] not in _ADDRESS_TYPES:
+            problems["addressType"] = "must be home or work"
+    if problems:
+        return {
+            "error": "invalid_address",
+            "message": "Ask the user to correct these fields.",
+            "fields": problems,
+        }
+    return None
+
+
 class AddressTools(_EcomToolBase):
     """Shopper delivery addresses and delivery-charge lookup."""
 
@@ -501,9 +614,21 @@ class AddressTools(_EcomToolBase):
         PUT /user-address (auth).
 
         Args:
-            address: Address body (line1, city, postcode, lat/lng, isDefault, …).
+            address: {"name", "phone", "pincode", "addressLine1", "city" (all
+                required), "area", "state", "landMark", "additionalInfo",
+                "alternatePhone", "addressType": "home"|"work"}. userId is added
+                automatically.
         """
-        return self._call(tool_context, "PUT", "/user-address", payload=address)
+        body = dict(address or {})
+        invalid = _validate_address(body, require_all=True)
+        if invalid:
+            return invalid
+        user = self._data(tool_context).get(self.AUTH_STATE_KEY, {}).get("user") or {}
+        user_id = user.get("_id") or user.get("id")
+        if user_id:
+            body["userId"] = user_id
+        body.setdefault("addressType", "home")
+        return self._call(tool_context, "PUT", "/user-address", payload=body)
 
     @tool(context=True, name="ecom_update_address")
     def update_address(
@@ -517,9 +642,38 @@ class AddressTools(_EcomToolBase):
             address_id: Target address id.
             updates: Partial address fields to change.
         """
+        changes = {k: v for k, v in (updates or {}).items() if k not in _ADDRESS_LOCKED}
+        if not changes:
+            return {
+                "error": "no_updates",
+                "message": "Provide at least one address field to change.",
+            }
+        invalid = _validate_address(changes, require_all=False)
+        if invalid:
+            return invalid
+        # The web app PATCHes the whole address, so merge onto the saved copy.
+        payload = {**(self._find_address(tool_context, address_id) or {}), **changes}
         return self._call(
-            tool_context, "PATCH", f"/user-address/{address_id}", payload=updates
+            tool_context, "PATCH", f"/user-address/{address_id}", payload=payload
         )
+
+    def _find_address(
+        self, tool_context: ToolContext, address_id: str
+    ) -> Optional[Dict[str, Any]]:
+        listing = self.get_addresses._tool_func(tool_context)
+        rows = listing
+        while isinstance(rows, dict):
+            if "error" in rows:
+                return None
+            rows = next(
+                (rows[k] for k in ("data", "addresses", "result") if k in rows), None
+            )
+        for row in rows if isinstance(rows, list) else []:
+            if isinstance(row, dict) and str(row.get("_id") or row.get("id")) == str(
+                address_id
+            ):
+                return row
+        return None
 
     @tool(context=True, name="ecom_delete_address")
     def delete_address(self, address_id: str, tool_context: ToolContext) -> Any:
@@ -536,9 +690,12 @@ class AddressTools(_EcomToolBase):
     def get_addresses(self, tool_context: ToolContext) -> Any:
         """List the signed-in user's saved addresses.
 
-        GET /user-address (auth).
+        GET /user-address?userId=<id> (auth) — the web app always sends userId.
         """
-        return self._call(tool_context, "GET", "/user-address")
+        user = self._data(tool_context).get(self.AUTH_STATE_KEY, {}).get("user") or {}
+        user_id = user.get("_id") or user.get("id")
+        params = {"userId": user_id} if user_id else None
+        return self._call(tool_context, "GET", "/user-address", params=params)
 
     @tool(context=True, name="ecom_get_default_address")
     def get_default_address(self, tool_context: ToolContext) -> Any:
@@ -1881,7 +2038,7 @@ def account_tools(logger_config) -> ToolBundle:
                 "add_to_wishlist",
                 "remove_from_wishlist",
             ),
-            *_pick(ua, "get_user_details", "update_my_profile"),
+            *_pick(ua, "get_user_details", "verify_account_email", "update_my_profile"),
             *_pick(flow, "complete_task", "fail_task"),
         ],
     )

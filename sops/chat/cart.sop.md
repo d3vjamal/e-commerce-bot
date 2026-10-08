@@ -67,6 +67,7 @@ automatically — never ask for it.
 - Never call `ecom_place_order` before step 6 confirmation.
 - Never invent prices, fees, or discounts — use tool output.
 - Keep the running totals visible during checkout.
-- If a tool returns `not_authenticated`, tell the user their session expired and
-  they need to sign in again; then stop (during checkout also call
+- If a tool returns `not_authenticated` or `token_expired`, tell the user their
+  session token is missing or expired and ask them to provide a fresh JWT token
+  (there is no sign-in step); then stop (during checkout also call
   `commerce_fail_task`).

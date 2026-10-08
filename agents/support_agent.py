@@ -2,9 +2,8 @@ from typing import Any
 
 from strands import Agent
 from strands.agent.conversation_manager import SummarizingConversationManager
-from strands.models import BedrockModel, CacheConfig
 
-from configs.settings import settings
+from agents.base import build_specialist_model
 from tools.support_tools import support_tools
 from utils.common import CommonUtility
 from utils.logger import Logger
@@ -28,13 +27,7 @@ class SupportAgent:
         self.logger = Logger(__name__, logger_config)
         self.common_util = CommonUtility(logger_config)
 
-        self.model = BedrockModel(
-            model_id=settings.specialist_model_id,
-            region_name=settings.region,
-            temperature=0.0,
-            cache_tools="default",
-            cache_config=CacheConfig(strategy="anthropic"),
-        )
+        self.model = build_specialist_model()
 
         self.conversation_manager = SummarizingConversationManager(
             summary_ratio=0.3,
