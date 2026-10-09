@@ -30,6 +30,8 @@ response = client.invoke_agent_runtime(
     agentRuntimeArn=RUNTIME_ARN,
     runtimeSessionId=SESSION_ID,
     payload=payload,
+    contentType="application/json",
+    accept="application/json",
     qualifier="DEFAULT",
 )
 

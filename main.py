@@ -3,6 +3,8 @@ import time
 from datetime import datetime, timezone
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.exception_handlers import request_validation_exception_handler
+from fastapi.exceptions import RequestValidationError
 
 from agents.orchestrator_agent import OrchestratorAgent
 from models.agent_invocation_model import InvocationRequest, InvocationResponse
@@ -78,6 +80,17 @@ def invoke_agent_sync(request: Request, body: InvocationRequest):
     except Exception as e:  # noqa: BLE001
         logger.exception(e)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.exception_handler(RequestValidationError)
+async def log_validation_error(request: Request, exc: RequestValidationError):
+    body = await request.body()
+    logger.error(
+        f"422 on {request.url.path} | content-type="
+        f"{request.headers.get('content-type')} | errors={exc.errors()} | "
+        f"body[:300]={body[:300]!r}"
+    )
+    return await request_validation_exception_handler(request, exc)
 
 
 @app.get("/ping")

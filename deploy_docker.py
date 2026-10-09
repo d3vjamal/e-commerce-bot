@@ -24,7 +24,9 @@ from dotenv import dotenv_values
 ROOT = Path(__file__).parent
 REGION = os.getenv("REGION", "ap-south-1")
 REPO_NAME = "agentcore-commerce-bot"
-RUNTIME_NAME = "agentcore_commerce_agent"
+# Container runtime; the older code-based "agentcore_commerce_agent" can't be
+# switched to a container artifact, so this one is created separately.
+RUNTIME_NAME = "agentcore_commerce_agent_docker"
 ENV_FILE = ROOT / os.getenv("ENV_FILE", ".env")
 
 # Non-secret app config forwarded to the runtime (matches configs/settings.py).

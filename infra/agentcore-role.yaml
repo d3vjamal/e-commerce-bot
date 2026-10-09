@@ -28,6 +28,12 @@ Resources:
             Version: "2012-10-17"
             Statement:
               - Effect: Allow
+                Action: [ecr:BatchGetImage, ecr:GetDownloadUrlForLayer]
+                Resource: !Sub "arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/agentcore-commerce-bot"
+              - Effect: Allow
+                Action: ecr:GetAuthorizationToken
+                Resource: "*"
+              - Effect: Allow
                 Action: [logs:DescribeLogStreams, logs:CreateLogGroup]
                 Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/bedrock-agentcore/runtimes/*"
               - Effect: Allow

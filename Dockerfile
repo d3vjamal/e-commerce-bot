@@ -1,6 +1,8 @@
-# Use uv's Python base image (matches pyproject requires-python >=3.13.7)
-# Build for ARM64 with: docker build --platform linux/arm64 ...
-FROM ghcr.io/astral-sh/uv:python3.13-bookworm-slim
+# Official Python image (matches pyproject requires-python >=3.13.7) with the uv
+# binary copied in; the combined uv:python3.13-bookworm-slim image has a broken
+# linux/arm64 variant. Build for ARM64 with: docker build --platform linux/arm64 ...
+FROM python:3.13-slim-bookworm
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
 WORKDIR /app
 
@@ -14,7 +16,7 @@ RUN uv sync --frozen --no-cache
 COPY . .
 
 # Expose port
-EXPOSE 8000
+EXPOSE 8080
 
 # Run application
-CMD ["uv", "run", "opentelemetry-instrument", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uv", "run", "opentelemetry-instrument", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]
