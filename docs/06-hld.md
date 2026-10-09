@@ -41,8 +41,10 @@ flowchart LR
     API --> PAY[Razorpay]
 ```
 
-The host app owns the user's identity. It may pass an already-issued backend
-JWT in `input.details.authToken`; otherwise the bot signs the user in itself.
+The host app owns the user's identity. It passes the already-issued backend JWT
+in `input.details.authToken` on every request (the bot refreshes it each turn;
+an expired token yields a "provide a fresh token" reply). Interactive sign-in by
+the bot is a fallback only.
 
 ## 4. Logical architecture
 

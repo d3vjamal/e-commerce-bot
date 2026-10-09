@@ -105,7 +105,7 @@ allowed).
 | Key | Type | Set by |
 |---|---|---|
 | `sessionContext` | `{channel, role, locale, userId}` (no raw token) | orchestrator, first turn |
-| `auth_state` | `{token, user, verification_status, source}` | orchestrator (host token, `source="host_app"`) or `ecom_login*` tools |
+| `auth_state` | `{token, user, verification_status, source, email_verified, email_attempts}` | orchestrator (host token, `source="host_app"`, refreshed every turn) or `ecom_login*` tools; email fields by `ecom_verify_account_email` |
 | `intent`, `pending_intents`, `turn_count` | list, list, int | `IntentRouter` |
 | `active_agent` | `AUTH` / `BROWSE` / `CART` / `ORDER` / `ACCOUNT` / null | `_run_specialist`, `handle_auth` |
 | `browse_state`, `cart_state`, `order_state`, `account_state` | `{flow_started, ...}` | `_run_specialist` |
@@ -229,7 +229,11 @@ SpecialistAgent.__init__ -> Agent(tools=bundle.tools)
 | Tool | Detail |
 |---|---|
 | `ecom_login`, `ecom_login_social` | Extract the token from an unknown-shape body, then write `auth_state = {token, user, verification_status: "PASS"}` |
-| `ecom_update_my_profile` | Resolves the user id from `auth_state.user`; rejects `email`, `password`, role, status, verification, token and id fields; `PATCH /users/:id` |
+| `ecom_update_my_profile` | Needs `email_verified`; resolves the user id from `auth_state.user`; rejects `email`, `password`, role, status, verification, token and id fields; `PATCH /users/:id` |
+| `ecom_verify_account_email` | Compares the typed email to the account's; 3 wrong attempts lock profile changes for the session |
+| `ecom_add_address` | Validates required fields, phone/pincode/type; injects `userId`, default `addressType=home`; `PUT /user-address` |
+| `ecom_update_address` | Drops locked fields, validates, merges onto the saved address, `PATCH /user-address/:id` |
+| `ecom_get_addresses` | `GET /user-address?userId=<id>` |
 | `commerce_complete_task(summary, order_id="")` | Sets `status=COMPLETE`, `task_summary`, optional `order_id` |
 | `commerce_fail_task(reason)` | Sets `status=FAILED`, `task_summary` |
 | Order tools | Use `OrderService`; return `ApiResponse.to_dict()` |
@@ -245,7 +249,7 @@ review notes; attach them only with a role-aware design.
 
 ```
 url      = urljoin(base_url + "/", path.lstrip("/"))
-headers  = {"Content-Type": "application/json", "Authorization": "<scheme> <token>"?}
+headers  = {"Content-Type": ..., "Authorization": "<scheme> <token>"?, "token": "<token>"?}
 response = _send(...)           # @retry_api_call, raise_for_status()
 return   = response.json()  |  {"statusCode": n}  |  {"statusCode": n, "raw": text}
 ```
@@ -262,6 +266,8 @@ return   = response.json()  |  {"statusCode": n}  |  {"statusCode": n, "raw": te
 | `get_order(token, id)` | `GET /order-details/:id` | |
 | `modify_order(token, id, updates)` | `PATCH /orders/:id` | Only `CUSTOMER_EDITABLE_FIELDS`; empty or disallowed updates fail; blocked when status is in `LOCKED_STATUSES` |
 | `cancel_order(token, id, reason)` | `POST /orders/:id/cancel-by-customer` | Blocked when status is in `LOCKED_STATUSES` |
+| `place_order(token, order)` | `POST /place-orders` | needs `addressId` + `paymentMethod` (COD/ONLINE) |
+| `modify_item_quantity(token, id, item_id, qty)` | `PATCH /orders/:id` | qty ≥ 1 int; blocked when locked |
 
 Status is found by `find_status`, which searches `status` / `orderStatus` through
 `data`, `order` and `result`. The backend remains the final authority.
@@ -274,7 +280,8 @@ Status is found by `find_status`, which searches `status` / `orderStatus` throug
 
 | Source | `error` |
 |---|---|
-| HTTP 4xx / 5xx | `http_<code>`, message from body `message` or `error` |
+| HTTP 401 | `token_expired` (ask the user for a fresh token) |
+| other HTTP 4xx / 5xx | `http_<code>`, message from body `message` or `error` |
 | Timeout | `timeout` |
 | Connection failure | `connection_error` |
 | Other exception | `request_failed` |
@@ -305,6 +312,7 @@ turn flow, routing table and response rules; `faq.md` is read as plain text by
 | `GUARDRAIL_ID`, `GUARDRAIL_VERSION` | none | Orchestrator guardrail |
 | `ECOMMERCE_API_BASE_URL` | none | Backend base URL |
 | `ECOMMERCE_AUTH_SCHEME` | `Bearer` | Authorization scheme |
+| `ECOMMERCE_TOKEN_HEADER` | `token` | extra raw-JWT header (empty disables) |
 | `ECOMMERCE_API_TIMEOUT` | 30 | Seconds |
 | `KNOWLEDGE_BASE_ID`, `KNOWLEDGE_BASE_TOP_K` | set / 5 | Support retrieval |
 | `SUPPORT_PAGE_URLS` | empty | `label=url,label=url` allow-list |
@@ -320,7 +328,7 @@ turn flow, routing table and response rules; `faq.md` is read as plain text by
 | Missing prompt | HTTP 400 | Error response |
 | Backend 4xx | `ApiResponse` or `{"error": ...}` returned to the LLM | The agent explains and offers next steps |
 | Backend 5xx / network | 3 retries, then error dict | Agent apologises, may call `commerce_fail_task` |
-| Not signed in | `not_authenticated` from the tool, `AUTH_REQUIRED` from the orchestrator | Prompt to sign in |
+| No / expired token | `not_authenticated` (tool), `token_expired` (401), `AUTH_REQUIRED` (orchestrator) | Agent asks for a fresh token |
 | Specialist exception | `SpecialistAgent.run` returns a system-error string, `status="ERROR"` | Generic retry message |
 | Orchestrator exception | Returns "Sorry, something went wrong." and empty state | Generic retry message |
 | Unknown / out-of-scope intent | `Fallback` tool | Capability summary |
@@ -328,7 +336,8 @@ turn flow, routing table and response rules; `faq.md` is read as plain text by
 ## 12. Test strategy
 
 Existing tests: `tests/test_order_service.py`, `test_response.py`,
-`test_support_tools.py`. Suggested additions:
+`test_support_tools.py`, `test_account_email_gate.py` (profile email gate, address
+validation/merge, address ops need no email). Suggested additions:
 
 | Test | Purpose |
 |---|---|

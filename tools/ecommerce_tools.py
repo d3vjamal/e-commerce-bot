@@ -123,6 +123,12 @@ class _EcomToolBase:
                 method, path, params=params, payload=payload, token=token
             )
         except Exception as exc:  # noqa: BLE001 - surface error to the LLM
+            if getattr(getattr(exc, "response", None), "status_code", None) == 401:
+                return {
+                    "error": "token_expired",
+                    "message": "The session token is invalid or has expired. "
+                    "Ask the user to provide a fresh token.",
+                }
             self.logger.exception(f"[ecom] {method} {path} failed")
             return {"error": "request_failed", "message": str(exc)}
 

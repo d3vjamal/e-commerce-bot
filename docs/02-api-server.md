@@ -23,8 +23,10 @@ Request (`models/agent_invocation_model.py`):
 - `prompt` (required) — the user message. Missing/empty → `400`.
 - `details` (optional) — parsed into `SessionContext`
   (`models/session_context.py`). Unknown keys are tolerated.
-  - `authToken` — when present, the orchestrator writes `auth_state` directly and
-    the AuthAgent is never invoked (silent adoption).
+  - `authToken` — the shopper's JWT. The orchestrator writes `auth_state` from it
+    and **re-adopts it every turn if it changed**, so send the current token on
+    every request. AuthAgent is never invoked when it is supplied.
+  - `userId` — needed for address lookups (`GET /user-address?userId=`).
   - `role` — `customer` (default), `admin`, `delivery`. Admin routing is Phase B.
 
 Response:
@@ -45,10 +47,10 @@ Response:
 
 `{"status": "healthy"}` — health check.
 
-## Session model & known limitation
+## Session model
 
-One process-wide `OrchestratorAgent` instance is created at startup. On the
-Bedrock AgentCore runtime that is one logical conversation per runtime session,
-which is fine. **A multi-session server must key an orchestrator/state store by
-`sessionId`** instead — the current singleton shares conversation history and
-`agent.state` across concurrent callers. This is the top hardening item.
+`main.py` keeps one `OrchestratorAgent` per
+`x-amzn-bedrock-agentcore-runtime-session-id` in an in-process dict, so a
+conversation continues across turns. A request with no session header gets a
+fresh, unstored orchestrator each turn (no leakage, no continuity). State is
+lost on restart/another instance — see the risks in `06-hld.md`.

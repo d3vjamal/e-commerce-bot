@@ -94,3 +94,18 @@ def test_add_address_validates_and_injects_user_id():
     assert sent["payload"]["phone"] == "9876543210"
     assert sent["payload"]["pincode"] == "560001"
     assert sent["payload"]["addressType"] == "home"
+
+
+def test_401_from_backend_becomes_token_expired():
+    from types import SimpleNamespace as NS
+
+    addr = AddressTools(LoggerConfig())
+    c = ctx({"id": "u1"})
+
+    def boom(*a, **k):
+        err = Exception("401")
+        err.response = NS(status_code=401)
+        raise err
+
+    addr.api = NS(request=boom)
+    assert addr.get_addresses._tool_func(c)["error"] == "token_expired"

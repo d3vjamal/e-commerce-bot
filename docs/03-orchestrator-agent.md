@@ -4,6 +4,8 @@
 
 ## Responsibilities
 
+- Adopt/refresh the host JWT into `auth_state` at the start of every turn.
+
 - Classify intent(s) via the `IntentRouter` tool.
 - Enforce the auth gate for account-scoped intents.
 - Run exactly one specialist per turn and relay its result.
@@ -63,7 +65,8 @@ turn_count       int
 intent           last classified list
 pending_intents  intents still to handle (ordered)
 active_agent     "AUTH" | "BROWSE" | "CART" | "ORDER" | "ACCOUNT" | null
-auth_state       { token, user, verification_status: "PASS"|"PENDING"|"FAILED", source? }
+auth_state       { token, user, verification_status: "PASS"|"PENDING"|"FAILED", source?,
+                   email_verified?, email_attempts? }   # token refreshed every turn from authToken
 browse_state     { flow_started, ... }
 cart_state       { flow_started, ... }
 order_state      { flow_started, ... }

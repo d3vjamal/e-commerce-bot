@@ -9,18 +9,20 @@ subsets via the selector helpers.
 
 - Public routes are called with no token.
 - Authenticated routes read the token from
-  `agent.state["data"]["auth_state"]["token"]` and send
-  `Authorization: {ECOMMERCE_AUTH_SCHEME} {token}` (default `Bearer`).
+  `agent.state["data"]["auth_state"]["token"]` and send it as
+  `Authorization: {ECOMMERCE_AUTH_SCHEME} {token}` (default `Bearer`) **and** as
+  a raw `{ECOMMERCE_TOKEN_HEADER}` header (default `token`, as the web app does).
 - If no token is present, the tool returns
   `{"error": "not_authenticated", "message": ...}` — the SOP tells the agent to
-  route back through sign-in.
+  ask the user for a fresh token. A backend 401 (order tools) returns
+  `token_expired`.
 - `ecom_login` / `ecom_login_social` / `ecom_login_admin` parse the token out of
   the response (`token`, `accessToken`, `tokens.*`, `data.*`, …) and set
   `auth_state.verification_status = "PASS"`.
 
-> **TODO before go-live:** confirm the backend's header scheme
-> (`../policies/Authorizer`). If it expects a bare token set
-> `ECOMMERCE_AUTH_SCHEME=""`; if `x-access-token`, adjust `_build_headers`.
+> **Before go-live:** confirm which header the backend authorizer reads. Both
+> `Authorization` and `token` are sent; if it expects another name, set
+> `ECOMMERCE_TOKEN_HEADER`.
 
 ## Request/response shapes
 
@@ -37,8 +39,9 @@ the real controllers using live responses from `scripts/chat.py`:
 | `auth_tools` | AuthAgent | login, login_social, register_user, forgot_password, verify_email, resend_verification |
 | `browse_tools` | BrowseAgent | product/category/shop/banner/home-feed **reads** only |
 | `cart_tools` | CartAgent | cart get/add/update/remove, product detail/options, address reads + add, delivery_charges, validate_coupon, place_order, razorpay ×3, `commerce_complete_task/_fail_task` |
-| `order_tools` | OrderAgent | get_my_orders, get_order_details, cancel_order_by_customer, `commerce_*` |
-| `account_tools` | AccountAgent | address CRUD, wishlist, get_user_details, update_user |
+| `order_tools` (`tools/order_tools.py`) | OrderAgent | get_my_orders, get_order_details, place_order, modify_order_item_quantity, modify_order_by_customer, cancel_order_by_customer, get_my_cart, address reads, `commerce_*` |
+| `account_tools` | AccountAgent | address CRUD, wishlist, get_user_details, verify_account_email, update_my_profile, `commerce_*` |
+| `support_tools` (`tools/support_tools.py`) | SupportAgent | FAQ, website pages, knowledge base |
 
 `build_ecommerce_toolset(logger_config)` returns every tool (used by tests /
 introspection).
@@ -56,6 +59,11 @@ introspection).
 `ecom_register_shop`, `ecom_search_shops`, `ecom_update_shop`
 
 ### Addresses — `AddressTools`
+Fields: `name`, `phone`, `pincode`, `addressLine1`, `city` (required); `area`,
+`state`, `landMark`, `additionalInfo`, `alternatePhone`, `addressType`
+(`home`/`work`). Add/update are validated in code; update merges onto the saved
+address; list sends `?userId=`.
+
 `ecom_add_address`, `ecom_update_address`, `ecom_delete_address`,
 `ecom_get_addresses`, `ecom_get_default_address`, `ecom_get_delivery_charges`
 

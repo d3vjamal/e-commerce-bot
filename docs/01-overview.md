@@ -1,5 +1,7 @@
 # 01 — Overview
 
+> New to the project? Read `00-start-here.md` first.
+
 `commerce-bot` is a multi-agent conversational assistant for an e-commerce
 storefront. It is the agent brain only — the catalogue, cart, orders, payments,
 and users live in a separate Express + TypeScript backend that this service
@@ -14,7 +16,7 @@ calls over REST.
 | Checkout: address → delivery → coupon → payment → place order | CartAgent | yes |
 | List / track / cancel orders | OrderAgent | yes |
 | Addresses, wishlists, profile | AccountAgent | yes |
-| Sign in / register / password reset | AuthAgent | — |
+| Sign in / register / password reset (fallback; host JWT is normally used) | AuthAgent | — |
 | Store-policy questions (returns, delivery, payments) | Orchestrator + `sops/faq.md` | no |
 
 ## Design principles (inherited from the original architecture)

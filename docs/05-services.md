@@ -13,11 +13,10 @@ plus `get / post / put / patch / delete` shortcuts.
 
 - **Base URL** — `settings.ecommerce_api_base_url` (`ECOMMERCE_API_BASE_URL`).
   Missing → `ValueError`.
-- **Auth header** — when `token` is passed:
-  `Authorization: {ECOMMERCE_AUTH_SCHEME} {token}` (default scheme `Bearer`; set
-  `ECOMMERCE_AUTH_SCHEME=""` for a bare token, or any custom scheme word).
-  **Confirm the scheme against the backend's `IsAuthenticated` middleware before
-  the first live authenticated call.**
+- **Auth headers** — when `token` is passed it is sent twice:
+  `Authorization: {ECOMMERCE_AUTH_SCHEME} {token}` (default `Bearer`; `""` for a
+  bare token) **and** `{ECOMMERCE_TOKEN_HEADER}: {token}` (default `token`, the
+  header the web app uses; set empty to disable).
 - **Retry** — `@retry_api_call` (`utils/retry.py`): 3 attempts with exponential
   backoff on connection errors and HTTP 5xx. 4xx is not retried.
 - **Errors** — `@handle_errors` logs and re-raises; the tool layer
@@ -25,7 +24,9 @@ plus `get / post / put / patch / delete` shortcuts.
   so the LLM can react instead of the turn crashing.
 - **Return** — decoded JSON, or `{"statusCode": ...}` / `{"raw": ...}` for empty
   / non-JSON bodies.
-- The `Authorization` header is masked in debug logs.
+- `Authorization` and `token` headers are masked in debug logs.
+- A 401 becomes `error="token_expired"` — in `ResponseBuilder` (order service)
+  and in `_EcomToolBase._call` (all other tools).
 
 ## `configs/settings.py` — `Settings`
 
@@ -40,6 +41,7 @@ required). Key vars:
 | `GUARDRAIL_ID`, `GUARDRAIL_VERSION` | optional Bedrock guardrail on the orchestrator |
 | `ECOMMERCE_API_BASE_URL` | Express backend root |
 | `ECOMMERCE_AUTH_SCHEME` | `Bearer` (default) / `""` / custom |
+| `ECOMMERCE_TOKEN_HEADER` | raw-JWT header name (default `token`; empty disables) |
 | `ECOMMERCE_API_TIMEOUT` | per-request seconds (default 30) |
 | `BRAND_NAME` | substituted into SOPs as `{{BRAND_NAME}}` |
 | `AGENTCORE_MEMORY_ID` | reserved for long-term memory (unused today) |

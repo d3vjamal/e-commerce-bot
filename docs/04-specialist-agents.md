@@ -51,12 +51,25 @@ before confirmation.
 
 ## OrderAgent
 
-`ListOrders` / `TrackOrder` from `ecom_get_my_orders` + `ecom_get_order_details`.
-`CancelOrder` = identify order → reason → confirm → `ecom_cancel_order_by_customer`
-→ `commerce_complete_task` / `commerce_fail_task`.
+List / track from `ecom_get_my_orders` + `ecom_get_order_details`; `ecom_place_order`;
+`ecom_modify_order_item_quantity` and delivery-detail edits; cancel =
+identify order → reason → confirm → `ecom_cancel_order_by_customer` →
+`commerce_complete_task` / `commerce_fail_task`. Rules (locked statuses,
+editable fields) are enforced in `OrderService`, not the prompt. A 401 surfaces as
+`token_expired` and the agent asks for a fresh token.
 
 ## AccountAgent
 
-Address CRUD, wishlist add/remove/list, and profile fields
-(`ecom_get_user_details` / `ecom_update_user`). Confirms deletes; reads state
-before and after changes. Email/password changes are out of scope.
+Addresses, wishlists and profile. See `docs/00-start-here.md` §8.
+
+- **Add address** — asks *every* field (name, phone, pincode, addressLine1, city
+  required; area, state, landMark, alternatePhone, additionalInfo, home/work
+  optional), confirms a summary, then `ecom_add_address`.
+- **Update address** — asks what to change, lists addresses (offers to add one if
+  there are none), confirms old vs new, then `ecom_update_address` (merged onto the
+  saved address; `_id`/`userId` locked).
+- **Validation** is in code (`_validate_address`): 10-digit mobile, 6-digit
+  pincode, `home`/`work`.
+- **No email check for addresses.** Profile edits (`ecom_update_my_profile`:
+  firstName/middleName/lastName/phone) require `ecom_verify_account_email` once per
+  session (3 attempts). Email/password changes are out of scope.
